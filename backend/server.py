@@ -509,7 +509,9 @@ async def market_data_ws(websocket: WebSocket):
                 sub = subscriptions.pop(symbol, None)
                 if sub:
                     await sub.stop()
-                await reply({"type": "unsubscribed", "symbol": symbol, "timestamp": _now_ms()})
+                    await reply({"type": "unsubscribed", "symbol": symbol, "timestamp": _now_ms()})
+                else:
+                    await reply({"type": "info", "message": f"Not subscribed to {symbol}."})
 
             elif action == "set_volatility":
                 symbol = raw_symbol.upper()

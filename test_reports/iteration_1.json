@@ -1,0 +1,34 @@
+{
+  "summary": "Comprehensive backend testing of the stateless mock crypto exchange market-data service. Covered REST endpoints (/api/symbols GET+POST, /api/symbols/{s}/volatility, /api/symbols/{s}/spike, /api/candles/{s}) and the /api/ws/market-data WebSocket flow including welcome, subscribe (default + channel-filtered + dynamic symbol creation), unsubscribe, set_volatility, spike, error handling, plus a regression check on emit rate and normal-mode spread width. 21/21 pytest cases passed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_market_data.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py:405 set_volatility route uses `symbol.upper()` but does not run through _validate_symbol; unknown format still returns 404 via the INSTRUMENTS check so it works, but reusing _validate_symbol would give clearer 400 for malformed input (nit).",
+    "server.py:507 unsubscribe path always returns 'unsubscribed' even when the symbol was never subscribed. Consider a distinct 'info' vs 'unsubscribed' payload so clients can detect the no-op case (minor).",
+    "server.py:305 broadcast iterates subscribers under 'symbol' but broadcasted market_events do not have a channel filter; a client that subscribed to only the 'trade' channel will still receive volatility_changed / spike events. This may be intended, but worth calling out as a design choice.",
+    "server.py:493 register_instrument inside the WS handler is invoked with float(start) if start else None -- start_price=0 (invalid) would pass silently as None. Not exploitable given register_instrument regenerates, but converting via NewSymbol-style validation would be tidier.",
+    "server.py:288 the 'random.random() < 0.8' skip means occasional ticks emit orderbook but no trade, which is fine, but candles then depend entirely on that stochastic branch -- documentation should note that candle history may lag for the first ~1s after subscribe."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_market_data.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "skipped"},
+  "test_credentials": "N/A - no auth required",
+  "seed_data_creation": "Dynamic symbols are created per-run with time-suffixed names (e.g. TSTxxxx-USD, STPxxxx-USD, ZZxx-USD) to avoid persistence collisions with re-runs on the same backend instance. Volatility is reset to 'normal' after mutation tests.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend state is in-memory and global; any created dynamic symbol persists until backend restart. Tests use time-based suffixes to remain idempotent. WS URL derived from REACT_APP_BACKEND_URL (https->wss). Regression test asserts >=2 msgs/sec and normal-mode median spread between 0..0.2% of mid (target ~0.01%).",
+  "rca of the issue": "No issues found."
+}
