@@ -1,0 +1,35 @@
+{
+  "summary": "Frontend-only E2E testing of dark-mode institutional crypto trading terminal against production URL. Executed all 10 requested scenarios (page load, order book, trade tape, candle chart interval toggle, market switching + localStorage persistence, stress panel volatility modes, spike up/down, persist toggle, add market, error overlays, responsive at 1280x720). All functional flows PASS. No console errors, no runtime error overlay detected.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_results": {
+    "page_load": "PASS - terminal-page renders, connection-status=LIVE within ~3s, market-selector default BTC-USD, mid-price=65,331.62 (numeric), msg-rate=7-14 msg/s",
+    "order_book": "PASS - 10 ask rows, 10 bid rows, 1 spread row present; asks priced above bids (screenshot: top ask 65,517.81, top bid 65,321.82); values update continuously",
+    "trade_tape": "PASS - trade-row count grew from 18 to 28 within 5s; trade-count text shows 'N prints'; rows show timestamp/symbol/BUY|SELL/size/price",
+    "candle_chart": "PASS - candle-chart contains multiple canvases (lightweight-charts v5 rendered); interval-5s-btn and interval-1s-btn both toggle without runtime errors",
+    "market_selector_switch": "PASS - switching to ETH-USD updates header (mid=3,494.39), trade rows show ETH-USD symbol, order book updates",
+    "market_persistence": "PASS - after page reload, market-selector still shows ETH-USD (localStorage persistence works)",
+    "stress_volatility": "PASS - volatile/calm/normal buttons update volatility-badge accordingly (badge text 'volatile'/'calm'/'normal', displayed uppercase via CSS)",
+    "spike": "PASS - spike DOWN dropped mid from 65,439.10 -> 64,207.94 (~1.9%); spike UP recovered to 65,330.24; spike-persist-switch toggles",
+    "add_market": "PASS - added QA2515-USD, drawer closed (implicitly), header switched to new symbol (mid=7.184), success toast 'QA2515-USD listed @ 7.207' visible, symbol appears in dropdown",
+    "error_overlays": "PASS - no console errors, no Runtime Error overlay, no .error/[class*=error] elements",
+    "responsive_1280x720": "PASS - layout remains usable, no broken panels"
+  },
+  "critical_code_review_comments": [
+    "Volatility badge display text: DOM contains lowercase ('volatile'/'calm'/'normal') and relies on CSS uppercase transform; assertion needs case-insensitive matching. Cosmetic only.",
+    "Playwright reports 'Element is outside of the viewport' on Radix Sheet drawer buttons despite being visually in-viewport at 1920x1080 (likely due to CSS transform/animation on the Sheet). Workaround: JS-based element.click(). Consider adding data-state stability or using pointer-events settling to make E2E automation more robust. Not a user-facing bug."
+  ],
+  "test_report_links": ["/app/test_reports/iteration_1.json"],
+  "action_items": [],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped per request)", "frontend": "100%"},
+  "test_credentials": "N/A - no auth",
+  "seed_data_creation": "Added market QA2515-USD via UI stress panel (in-memory, will persist until backend restart)",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Frontend fully validated against production URL. Backend from iteration_1 was 21/21. If retesting drawer buttons via Playwright, use JS click (element.click() via page.evaluate) instead of Locator.click() because Radix Sheet transform confuses viewport check. Added symbols (QA*) accumulate until backend restart."
+}

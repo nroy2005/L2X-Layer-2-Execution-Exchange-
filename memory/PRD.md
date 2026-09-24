@@ -30,7 +30,14 @@ Build a lightweight, stateless backend that simulates a crypto exchange, emittin
 ## Implemented
 - 2026-06: WebSocket market-data generator (orderbook + trades), verified over external wss URL.
 - 2026-06: Candle feed (OHLC streaming + REST history), extra markets + dynamic symbols, volatility modes + spikes. Testing agent: 21/21 backend tests passed (`/app/backend/tests/test_market_data.py`, `/app/test_reports/iteration_1.json`).
+- 2026-06: Trading terminal frontend (`/app/frontend/src/pages/Terminal.js`): header (market selector, live mid w/ direction flash, spread, volatility badge, msg/s, WS status), Lightweight Charts v5 candlestick (1s/5s, seeded from `/api/candles`), split order book with depth bars + spread row, trade tape (150 prints, row flash), Stress Test drawer (volatility toggle, spike up/down w/ magnitude slider + persist, add market). Single reconnecting WS (`src/lib/marketFeed.js`) with rAF-batched `useSyncExternalStore` snapshots. Testing agent frontend E2E: 100% (`/app/test_reports/iteration_2.json`).
+- Repo hygiene for GitHub: `README.md` with run instructions + API docs, `backend/.env.example`, `frontend/.env.example` (whitelisted in `.gitignore`).
+
+## Frontend notes
+- Fonts: IBM Plex Sans (UI) + JetBrains Mono (numerics). Design tokens in `/app/design_guidelines.json`.
+- lightweight-charts locale pinned to `en-US` (headless Chromium reports `en-US@posix` which throws).
+- Selected market persisted in localStorage key `terminal.symbol`.
 
 ## Backlog (user stated will request later)
-- P1: Live trading dashboard frontend (order book depth, trade tape, candlestick chart, volatility controls).
 - P1: RAG-based backend.
+- P2: Scenario scripts (timed sequence of spikes/mode changes), tick recording/replay, volume histogram under chart, multi-symbol watchlist.
