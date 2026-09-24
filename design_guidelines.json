@@ -1,0 +1,134 @@
+{
+  "theme": "dark",
+  "project_context": "Institutional Cryptocurrency Trading Terminal",
+  "typography": {
+    "headings": {
+      "family": "IBM Plex Sans, sans-serif",
+      "weights": ["400", "500", "600"],
+      "usage": "Headers, labels, structural UI text, component titles."
+    },
+    "data_and_numerics": {
+      "family": "JetBrains Mono, Roboto Mono, monospace",
+      "weights": ["400", "500", "700"],
+      "usage": "CRITICAL: Used for all prices, sizes, timestamps, order book data, trade tape, and real-time feeds."
+    },
+    "hierarchy": {
+      "h1": "text-2xl tracking-tight text-white font-medium",
+      "h2": "text-lg tracking-tight text-gray-200 font-medium",
+      "body": "text-sm text-gray-300",
+      "data_sm": "text-xs font-mono tabular-nums",
+      "data_md": "text-sm font-mono tabular-nums",
+      "data_lg": "text-xl font-mono tabular-nums font-semibold"
+    }
+  },
+  "colors": {
+    "backgrounds": {
+      "app": "#050505",
+      "panel": "#0C0C0C",
+      "panel_hover": "#171717",
+      "drawer": "#121212",
+      "overlay": "rgba(0, 0, 0, 0.8)"
+    },
+    "text": {
+      "primary": "#FFFFFF",
+      "secondary": "#A1A1AA",
+      "muted": "#52525B",
+      "active": "#E4E4E7"
+    },
+    "market": {
+      "bid_text": "#4ADE80",
+      "bid_bg_flash": "rgba(74, 222, 128, 0.25)",
+      "bid_depth": "rgba(74, 222, 128, 0.12)",
+      "ask_text": "#F87171",
+      "ask_bg_flash": "rgba(248, 113, 113, 0.25)",
+      "ask_depth": "rgba(248, 113, 113, 0.12)",
+      "spread_bg": "#18181B"
+    },
+    "borders": {
+      "default": "#27272A",
+      "subtle": "#18181B",
+      "focus": "#3B82F6"
+    }
+  },
+  "spacing_and_density": {
+    "philosophy": "High-density Mode B (Dashboard). Maximize screen real estate. Information clarity over decorative spacing.",
+    "panels": "p-3 or p-4 maximum for panel interiors.",
+    "rows": "py-0.5 px-2 for order book and trade tape rows. Minimal height for maximum data display.",
+    "gaps": "Use 1px gaps (gap-px) combined with bg-border on wrappers to create crisp 1px borders between panels."
+  },
+  "grid_and_layout": {
+    "wrapper": "h-screen w-screen overflow-hidden bg-[#27272A] (acts as border color) text-white flex flex-col",
+    "header": "h-14 flex items-center px-4 justify-between bg-[#0C0C0C] shrink-0 border-b border-[#27272A]",
+    "main_grid": "flex-1 grid grid-cols-12 gap-px overflow-hidden",
+    "areas": {
+      "chart": "col-span-12 lg:col-span-9 bg-[#0C0C0C] flex flex-col h-[50vh] lg:h-auto",
+      "order_book": "col-span-12 lg:col-span-3 bg-[#0C0C0C] h-[40vh] lg:h-full overflow-hidden flex flex-col",
+      "trade_tape": "col-span-12 lg:col-span-9 bg-[#0C0C0C] h-[30vh] lg:h-[35%] flex flex-col"
+    }
+  },
+  "surface_and_borders": {
+    "style": "Grid Borders (The Technical Look). Exposed skeleton, sharp edges, cardless.",
+    "rules": [
+      "No drop shadows. Use flat surfaces.",
+      "No gradients. Flat colors only.",
+      "1px solid borders between all adjacent panels (achieved via grid gap-px and wrapper background).",
+      "Panels are completely flat. UI components should use sharp or slightly rounded (rounded-sm) edges."
+    ]
+  },
+  "components": {
+    "file_extension": "All components and logic MUST be written in standard Javascript/JSX (.js files).",
+    "market_selector": {
+      "type": "Dropdown Menu or Select",
+      "styling": "Solid dark background (CRITICAL: NO transparent bg). Borderless trigger, font-mono for mid-price display.",
+      "features": "Include connection status indicator (green dot for live WebSocket)."
+    },
+    "chart": {
+      "library": "lightweight-charts",
+      "layout": "Dominant top-left area.",
+      "styling": "Dark theme configuration injected via library config. Candlesticks colored matching market.bid_text and market.ask_text.",
+      "controls": "Include 1s/5s interval toggle inside the chart panel header."
+    },
+    "order_book": {
+      "layout": "Split view in the right column (asks top, bids bottom).",
+      "features": [
+        "Depth Bars: Absolute positioned divs with width percentages behind the rows.",
+        "Spread Row: Centered between bids and asks with contrasting background.",
+        "Alignment: Tabular numbers right-aligned to align decimals perfectly."
+      ]
+    },
+    "trade_tape": {
+      "layout": "Scrolling data grid at the bottom under the chart.",
+      "styling": "Columns: Timestamp, Symbol, Side, Size, Price. Sticky header, scrollable body.",
+      "features": "New rows flash briefly upon insertion."
+    },
+    "stress_test_drawer": {
+      "type": "Shadcn Sheet (Collapsible Drawer)",
+      "styling": "Anchored to the right. Use solid bg-[#121212]. Include Toggles for volatility and Action buttons for spikes.",
+      "buttons": "Sharp edged, solid colors. Red for spike down, Green for spike up."
+    },
+    "toasts": {
+      "library": "sonner",
+      "styling": "Dark theme, positioned top-right or bottom-right, distinct border color based on event type (volatility changed, spike)."
+    }
+  },
+  "motion_and_interactions": {
+    "price_flashes": "Backgrounds of changed cells flash bid_bg_flash or ask_bg_flash for 300ms upon data change, then transition back to transparent.",
+    "transitions": "Use 'transition-colors duration-300 ease-out' for flashes. CRITICAL: No layout shifts on updates.",
+    "hover_states": "Hovering over rows in order book/trade tape highlights the row with bg-[#171717]."
+  },
+  "icons_and_assets": {
+    "library": "lucide-react",
+    "usage": "Use sparingly for controls (settings, chart intervals, connection status). CRITICAL: No emojis."
+  },
+  "universal_guidelines": [
+    "No generic AI slop. Create a dense, highly professional, hyper-functional terminal.",
+    "CRITICAL: Use pure React state/refs for high frequency updates, avoid heavy re-renders. Use tabular-nums class for all numbers to prevent horizontal jitter.",
+    "DO NOT use transparent backgrounds for dropdowns, overlays, or drawers.",
+    "Use standard DOM elements with Tailwind classes for grid layouts to avoid Shadcn structural limitations in dense environments.",
+    "Focus on performance: ensure chart and order book can handle heavy event loads without freezing."
+  ],
+  "accessibility_and_testing": {
+    "testing_ids": "CRITICAL: ALL interactive elements, buttons, toggles, dropdowns, and data rows MUST include a 'data-testid' attribute (e.g., 'data-testid=\"market-selector\"', 'data-testid=\"orderbook-bid-row\"').",
+    "contrast": "Maintain strictly >4.5:1 contrast for all essential text against dark backgrounds."
+  }
+}

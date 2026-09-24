@@ -1,34 +1,35 @@
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
+.terminal-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.terminal-scroll::-webkit-scrollbar-track {
+  background: #0c0c0c;
+}
+.terminal-scroll::-webkit-scrollbar-thumb {
+  background: #27272a;
+}
+.terminal-scroll::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
+@keyframes flash-buy {
+  from {
+    background-color: rgba(74, 222, 128, 0.25);
+  }
+  to {
+    background-color: transparent;
+  }
 }
-
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
+@keyframes flash-sell {
+  from {
+    background-color: rgba(248, 113, 113, 0.25);
+  }
+  to {
+    background-color: transparent;
+  }
 }
-
-.App-link {
-    color: #61dafb;
+.tape-flash-buy {
+  animation: flash-buy 600ms ease-out;
 }
-
-@keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
+.tape-flash-sell {
+  animation: flash-sell 600ms ease-out;
 }
