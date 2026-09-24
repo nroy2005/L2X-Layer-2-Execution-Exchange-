@@ -36,6 +36,10 @@ yarn start                    # http://localhost:3000
 | POST | `/api/symbols/{symbol}/volatility` | `{mode: calm \| normal \| volatile}` |
 | POST | `/api/symbols/{symbol}/spike` | `{direction: up \| down, magnitude_pct, persist}` |
 | GET | `/api/candles/{symbol}?interval=1s&limit=100` | Candle history (`1s`, `5s`, `15s`, `1m`) |
+| GET | `/api/ticker` | All markets: mid, 1-minute change, volatility |
+| GET | `/api/scenarios` | Scenario presets (`news_day`, `flash_crash`, `pump_and_dump`, `calm_drift`) + running scenarios |
+| POST | `/api/symbols/{symbol}/scenario` | `{preset}` or `{name, steps:[{delay_ms, action, ...}]}` — run a timed script |
+| GET / DELETE | `/api/symbols/{symbol}/scenario` | Status / cancel the running scenario |
 | WS | `/api/ws/market-data` | Streaming feed (see below) |
 
 ### WebSocket protocol
@@ -46,17 +50,23 @@ yarn start                    # http://localhost:3000
 {"action": "unsubscribe", "symbol": "BTC-USD"}
 {"action": "set_volatility", "symbol": "BTC-USD", "mode": "volatile"}
 {"action": "spike", "symbol": "BTC-USD", "direction": "down", "magnitude_pct": 3, "persist": false}
+{"action": "subscribe_ticker"}                       // 1 Hz snapshot of every market
+{"action": "run_scenario", "symbol": "BTC-USD", "preset": "news_day"}   // or "steps": [...]
+{"action": "cancel_scenario", "symbol": "BTC-USD"}
 ```
 
 Server messages: `welcome`, `subscribed`, `unsubscribed`, `orderbook` (10 levels/side),
-`trade`, `candle` (`closed: true` when the bucket rolls), `market_event`
-(`volatility_changed`, `spike`), `info`, `error`. Ticks arrive every 50–500 ms per symbol.
+`trade`, `candle` (`closed: true` when the bucket rolls), `ticker`, `market_event`
+(`volatility_changed`, `spike`, `scenario_started`, `scenario_step`, `scenario_finished`,
+`scenario_cancelled`), `info`, `error`. Ticks arrive every 50–500 ms per symbol.
 Subscribing to an unknown but valid symbol (`ABC-USD`) creates it on the fly.
 
 ## Frontend
 
-Single-page terminal: market selector + live mid, candlestick chart (1s/5s), split order book with
-depth bars, trade tape, and a Stress Test drawer (volatility toggle, spike up/down, add market).
+Single-page terminal: market selector + live mid, watchlist strip (all markets, 1m change, click
+to switch), candlestick chart with volume pane (1s/5s), split order book with depth bars, trade
+tape, and a Stress Test drawer (volatility toggle, spike up/down, scenario script builder with
+presets, add market).
 A single reconnecting WebSocket (`src/lib/marketFeed.js`) buffers ticks and flushes to React once
 per animation frame via `useSyncExternalStore`.
 

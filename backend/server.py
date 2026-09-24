@@ -472,7 +472,7 @@ def _resolve_scenario(body: ScenarioBody) -> Tuple[str, List[dict]]:
         preset = SCENARIO_PRESETS.get(body.preset)
         if not preset:
             raise ValueError(f"Unknown preset. Use one of {list(SCENARIO_PRESETS)}.")
-        return body.name or preset["name"], [ScenarioStep(**s).model_dump() for s in preset["steps"]]
+        return body.name or preset["name"], [dict(s) for s in preset["steps"]]
     if not body.steps:
         raise ValueError("Provide either 'preset' or a non-empty 'steps' list.")
     for s in body.steps:

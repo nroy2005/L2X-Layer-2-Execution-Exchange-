@@ -31,6 +31,7 @@ Build a lightweight, stateless backend that simulates a crypto exchange, emittin
 - 2026-06: WebSocket market-data generator (orderbook + trades), verified over external wss URL.
 - 2026-06: Candle feed (OHLC streaming + REST history), extra markets + dynamic symbols, volatility modes + spikes. Testing agent: 21/21 backend tests passed (`/app/backend/tests/test_market_data.py`, `/app/test_reports/iteration_1.json`).
 - 2026-06: Trading terminal frontend (`/app/frontend/src/pages/Terminal.js`): header (market selector, live mid w/ direction flash, spread, volatility badge, msg/s, WS status), Lightweight Charts v5 candlestick (1s/5s, seeded from `/api/candles`), split order book with depth bars + spread row, trade tape (150 prints, row flash), Stress Test drawer (volatility toggle, spike up/down w/ magnitude slider + persist, add market). Single reconnecting WS (`src/lib/marketFeed.js`) with rAF-batched `useSyncExternalStore` snapshots. Testing agent frontend E2E: 100% (`/app/test_reports/iteration_2.json`).
+- 2026-06: Volume histogram pane under candles (lightweight-charts v5 panes API), multi-market watchlist strip (backend market clock drifts idle markets + 1m change, `ticker` WS channel via `subscribe_ticker`, `GET /api/ticker`), scenario scripts (4 presets in `SCENARIO_PRESETS`, REST `GET /api/scenarios`, `POST/GET/DELETE /api/symbols/{symbol}/scenario`, WS `run_scenario`/`cancel_scenario`, `market_event` scenario_started/step/finished/cancelled; frontend `ScenarioBuilder` in Stress Test drawer). Testing agent: backend 11/11 (`tests/test_ticker_scenarios.py`), frontend 100% (`/app/test_reports/iteration_3.json`).
 - Repo hygiene for GitHub: `README.md` with run instructions + API docs, `backend/.env.example`, `frontend/.env.example` (whitelisted in `.gitignore`).
 
 ## Frontend notes
@@ -40,4 +41,4 @@ Build a lightweight, stateless backend that simulates a crypto exchange, emittin
 
 ## Backlog (user stated will request later)
 - P1: RAG-based backend.
-- P2: Scenario scripts (timed sequence of spikes/mode changes), tick recording/replay, volume histogram under chart, multi-symbol watchlist.
+- P2: Tick recording/replay, per-step persist toggle in scenario builder, saving custom scenarios (would need storage), order book heatmap over time.

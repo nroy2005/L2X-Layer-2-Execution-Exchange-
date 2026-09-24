@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 3: E2E testing of new features - watchlist strip, volume pane, and scenario scripts. Backend: 11/11 pytest tests pass in /app/backend/tests/test_ticker_scenarios.py (ticker REST + drift, scenarios REST full lifecycle, WS ticker sub/unsub, WS run_scenario/cancel_scenario with subscribed msg 'scenario' field). Frontend: All 8 requested scenarios pass against production URL — watchlist renders 8 items with per-symbol change badges and switches market on click; candle chart has 11 canvases confirming 2 panes with volume histogram; scenario builder loads flash_crash preset (5 rows), remove -> 4 rows, add -> 5 rows, Run -> scenario-running shows 'Flash Crash step X/5', progress advances (0/5 -> 2/5 within 4s), cancel removes it; toast 'ETH-USD volatility -> NORMAL' visible; no console errors, no runtime error overlays.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_results": {
+    "GET /api/ticker": "PASS - type=ticker, 8 markets, all fields present, numeric change_1m_pct",
+    "ticker drift (idle markets)": "PASS - 3s apart shows multiple mids changed via market_clock",
+    "GET /api/scenarios": "PASS - 4 preset ids present, running dict",
+    "POST flash_crash + status + delete lifecycle": "PASS - 202, name='Flash Crash', total=5; second DELETE -> cancelled false",
+    "Validation errors": "PASS - unknown preset 400, missing mode 400, magnitude 60 -> 422, unknown symbol -> 404",
+    "Custom scenario applies + finishes ~1.5s": "PASS - volatility='volatile' after, running null",
+    "WS subscribe_ticker/unsubscribe_ticker": "PASS - ticker_subscribed then multiple ticker msgs, stops after unsubscribe",
+    "WS run/cancel calm_drift": "PASS - subscribed msg has 'scenario' field, scenario_accepted, scenario_started (Calm Drift, total=2), volatility_changed calm, scenario_step 1/2, cancel reply cancelled=true, scenario_cancelled event, invalid steps -> error",
+    "FE watchlist": "PASS - 8 items, active data-active=true, click ETH-USD switches header to ~3474 and terminal to ETH-USD",
+    "FE volume pane": "PASS - candle-chart has 11 canvases (chart + volume pane), 'Volume' label present, interval 5s toggle keeps both panes rendering",
+    "FE scenario builder": "PASS - preset select loads flash_crash 5 rows, remove -> 4, add step -> 5, Run -> scenario-running 'Flash Crash step 0/5' -> '2/5' after 4s, Cancel removes it; volatility-normal-btn resets"
+  },
+  "critical_code_review_comments": [
+    "server.py L482: _resolve_scenario re-runs ScenarioStep(**s) for preset steps unnecessarily (they're already validated dicts). Minor perf/clarity nit.",
+    "server.py L732: ticker_stream captures reply closure but ticker_task variable is set AFTER create_task. Non-issue currently but if code is later refactored to check ticker_task inside coroutine, could race. Cosmetic.",
+    "ScenarioBuilder.js: presets fetched via axios only once on mount; a WS reconnection or backend restart won't refresh preset list. Acceptable for MVP but worth noting.",
+    "Watchlist volatility label uses uppercase text but color #FB923C on dark bg has adequate contrast; OK."
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_ticker_scenarios.py",
+    "/app/test_reports/pytest/pytest_ticker_scenarios.xml"
+  ],
+  "action_items": [],
+  "updated_files": ["/app/backend/tests/test_ticker_scenarios.py"],
+  "success_rate": {"backend": "100% (11/11)", "frontend": "100%"},
+  "test_credentials": "N/A - no auth",
+  "seed_data_creation": "None. Reset ETH-USD, BTC-USD, SOL-USD, AVAX-USD volatility to normal after tests.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend market state (INSTRUMENTS + previously added QA*-USD symbols from iteration_2) persists in-memory until backend restart; expect >8 markets in /api/symbols but ticker shows base 8+ (all registered). Tests reset volatility after use. Playwright tip retained: use JS click via page.evaluate for opening Radix Sheet stress drawer; opening a Radix Select trigger inside portal also worked with JS-click."
+}
