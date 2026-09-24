@@ -12,13 +12,13 @@ import random
 import re
 import time
 from collections import defaultdict, deque
-from contextlib import suppress
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Literal, Optional, Set, Tuple
 
 from dotenv import load_dotenv
 from fastapi import APIRouter, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from starlette.middleware.cors import CORSMiddleware
 
 ROOT_DIR = Path(__file__).parent
@@ -63,6 +63,55 @@ DEFAULT_CANDLE_INTERVAL = "1s"
 CANDLE_HISTORY = 500
 CHANNELS = {"orderbook", "trade", "candle"}
 
+CLOCK_INTERVAL_S = 0.25       # global market clock tick (drives idle markets + mid history)
+MID_HISTORY_MS = 130_000      # keep a little over 2 minutes of mids for 1m change
+TICKER_INTERVAL_S = 1.0
+
+SCENARIO_PRESETS: Dict[str, dict] = {
+    "news_day": {
+        "name": "News Day",
+        "description": "Quiet open, headline hits, whipsaw, then a grind higher.",
+        "steps": [
+            {"delay_ms": 0, "action": "set_volatility", "mode": "calm"},
+            {"delay_ms": 5000, "action": "set_volatility", "mode": "volatile"},
+            {"delay_ms": 1000, "action": "spike", "direction": "up", "magnitude_pct": 3, "persist": True},
+            {"delay_ms": 4000, "action": "spike", "direction": "down", "magnitude_pct": 1.5, "persist": False},
+            {"delay_ms": 6000, "action": "spike", "direction": "up", "magnitude_pct": 2, "persist": True},
+            {"delay_ms": 8000, "action": "set_volatility", "mode": "normal"},
+        ],
+    },
+    "flash_crash": {
+        "name": "Flash Crash",
+        "description": "Sudden liquidation cascade followed by a violent recovery.",
+        "steps": [
+            {"delay_ms": 0, "action": "set_volatility", "mode": "normal"},
+            {"delay_ms": 3000, "action": "spike", "direction": "down", "magnitude_pct": 8, "persist": False},
+            {"delay_ms": 500, "action": "set_volatility", "mode": "volatile"},
+            {"delay_ms": 5000, "action": "spike", "direction": "up", "magnitude_pct": 4, "persist": False},
+            {"delay_ms": 6000, "action": "set_volatility", "mode": "normal"},
+        ],
+    },
+    "pump_and_dump": {
+        "name": "Pump & Dump",
+        "description": "Staged pumps followed by a full unwind.",
+        "steps": [
+            {"delay_ms": 0, "action": "spike", "direction": "up", "magnitude_pct": 2, "persist": True},
+            {"delay_ms": 4000, "action": "spike", "direction": "up", "magnitude_pct": 3, "persist": True},
+            {"delay_ms": 4000, "action": "set_volatility", "mode": "volatile"},
+            {"delay_ms": 3000, "action": "spike", "direction": "down", "magnitude_pct": 6, "persist": True},
+            {"delay_ms": 5000, "action": "set_volatility", "mode": "calm"},
+        ],
+    },
+    "calm_drift": {
+        "name": "Calm Drift",
+        "description": "Low-volatility weekend tape.",
+        "steps": [
+            {"delay_ms": 0, "action": "set_volatility", "mode": "calm"},
+            {"delay_ms": 15000, "action": "set_volatility", "mode": "normal"},
+        ],
+    },
+}
+
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
@@ -106,6 +155,7 @@ class MarketSimulator:
         self.anchors: Dict[str, float] = {}
         self.modes: Dict[str, str] = {}
         self.impulses: Dict[str, float] = {}
+        self.history: Dict[str, deque] = {}
         for sym in INSTRUMENTS:
             self.add(sym)
 
@@ -114,6 +164,18 @@ class MarketSimulator:
         self.anchors[symbol] = INSTRUMENTS[symbol]["start"]
         self.modes[symbol] = "normal"
         self.impulses[symbol] = 0.0
+        self.history[symbol] = deque(maxlen=int(MID_HISTORY_MS / 1000 / CLOCK_INTERVAL_S))
+
+    def record(self, symbol: str):
+        self.history[symbol].append((_now_ms(), self.mids[symbol]))
+
+    def change_1m_pct(self, symbol: str) -> float:
+        hist = self.history[symbol]
+        if not hist:
+            return 0.0
+        cutoff = _now_ms() - 60_000
+        base = next((mid for ts, mid in hist if ts >= cutoff), hist[0][1])
+        return (self.mids[symbol] / base - 1.0) * 100.0
 
     def set_mode(self, symbol: str, mode: str):
         self.modes[symbol] = mode
@@ -315,10 +377,44 @@ def _symbol_info(sym: str) -> dict:
         "mid": round(simulator.mids[sym], cfg["price_dp"]),
         "start": cfg["start"],
         "volatility": simulator.modes[sym],
+        "change_1m_pct": round(simulator.change_1m_pct(sym), 4),
         "price_dp": cfg["price_dp"],
         "size_dp": cfg["size_dp"],
         "dynamic": cfg.get("dynamic", False),
     }
+
+
+def build_ticker() -> dict:
+    return {
+        "type": "ticker",
+        "timestamp": _now_ms(),
+        "markets": [
+            {
+                "symbol": sym,
+                "mid": round(simulator.mids[sym], INSTRUMENTS[sym]["price_dp"]),
+                "change_1m_pct": round(simulator.change_1m_pct(sym), 4),
+                "volatility": simulator.modes[sym],
+                "price_dp": INSTRUMENTS[sym]["price_dp"],
+            }
+            for sym in INSTRUMENTS
+        ],
+    }
+
+
+async def market_clock():
+    """Drifts markets nobody is streaming and records mid history for 1m change."""
+    while True:
+        for sym in list(INSTRUMENTS):
+            if not subscribers.get(sym):
+                simulator.step(sym)
+            simulator.record(sym)
+        await asyncio.sleep(CLOCK_INTERVAL_S)
+
+
+async def ticker_stream(send):
+    while True:
+        await send(build_ticker())
+        await asyncio.sleep(TICKER_INTERVAL_S)
 
 
 def _validate_symbol(symbol: str) -> str:
@@ -351,9 +447,101 @@ async def _spike(symbol: str, direction: str, magnitude_pct: float, persist: boo
 
 
 # ---------------------------------------------------------------------------
+# Scenario scripts (timed sequences of spikes / volatility changes)
+# ---------------------------------------------------------------------------
+class ScenarioStep(BaseModel):
+    delay_ms: int = Field(default=0, ge=0, le=600_000)
+    action: Literal["spike", "set_volatility"]
+    mode: Optional[Literal["calm", "normal", "volatile"]] = None
+    direction: Optional[Literal["up", "down"]] = None
+    magnitude_pct: float = Field(default=2.0, gt=0, le=50)
+    persist: bool = False
+
+
+class ScenarioBody(BaseModel):
+    preset: Optional[str] = None
+    name: Optional[str] = None
+    steps: Optional[List[ScenarioStep]] = Field(default=None, max_length=50)
+
+
+scenarios: Dict[str, dict] = {}
+
+
+def _resolve_scenario(body: ScenarioBody) -> Tuple[str, List[dict]]:
+    if body.preset:
+        preset = SCENARIO_PRESETS.get(body.preset)
+        if not preset:
+            raise ValueError(f"Unknown preset. Use one of {list(SCENARIO_PRESETS)}.")
+        return body.name or preset["name"], [ScenarioStep(**s).model_dump() for s in preset["steps"]]
+    if not body.steps:
+        raise ValueError("Provide either 'preset' or a non-empty 'steps' list.")
+    for s in body.steps:
+        if s.action == "set_volatility" and not s.mode:
+            raise ValueError("set_volatility steps require 'mode'.")
+    return body.name or "Custom scenario", [s.model_dump() for s in body.steps]
+
+
+def _scenario_event(symbol: str, event: str, **extra) -> dict:
+    return {"type": "market_event", "event": event, "symbol": symbol, "timestamp": _now_ms(), **extra}
+
+
+async def cancel_scenario(symbol: str) -> bool:
+    state = scenarios.pop(symbol, None)
+    if not state:
+        return False
+    state["task"].cancel()
+    with suppress(asyncio.CancelledError):
+        await state["task"]
+    return True
+
+
+async def start_scenario(symbol: str, name: str, steps: List[dict]) -> dict:
+    await cancel_scenario(symbol)
+    total = len(steps)
+    state = {"name": name, "total": total, "index": 0, "started_at": _now_ms()}
+
+    async def runner():
+        try:
+            await broadcast(symbol, _scenario_event(symbol, "scenario_started", name=name, total=total, steps=steps))
+            for i, st in enumerate(steps, start=1):
+                await asyncio.sleep(st["delay_ms"] / 1000.0)
+                if st["action"] == "spike":
+                    await _spike(symbol, st["direction"] or "up", st["magnitude_pct"], st["persist"])
+                else:
+                    await _set_volatility(symbol, st["mode"])
+                state["index"] = i
+                await broadcast(symbol, _scenario_event(symbol, "scenario_step", name=name, index=i, total=total, step=st))
+            scenarios.pop(symbol, None)
+            await broadcast(symbol, _scenario_event(symbol, "scenario_finished", name=name, total=total))
+        except asyncio.CancelledError:
+            await broadcast(symbol, _scenario_event(symbol, "scenario_cancelled", name=name, index=state["index"], total=total))
+            raise
+
+    state["task"] = asyncio.create_task(runner())
+    scenarios[symbol] = state
+    return {"symbol": symbol, "name": name, "total": total, "steps": steps}
+
+
+def _scenario_status(symbol: str) -> Optional[dict]:
+    state = scenarios.get(symbol)
+    if not state:
+        return None
+    return {"name": state["name"], "index": state["index"], "total": state["total"], "started_at": state["started_at"]}
+
+
+# ---------------------------------------------------------------------------
 # REST API
 # ---------------------------------------------------------------------------
-app = FastAPI(title="Mock Crypto Exchange - Market Data")
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    clock = asyncio.create_task(market_clock())
+    yield
+    clock.cancel()
+    for sym in list(scenarios):
+        await cancel_scenario(sym)
+
+
+app = FastAPI(title="Mock Crypto Exchange - Market Data", lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
 
 
@@ -436,6 +624,48 @@ async def get_candles(symbol: str, interval: str = DEFAULT_CANDLE_INTERVAL,
     return {"symbol": sym, "interval": interval, "candles": candles.series(sym, interval, limit)}
 
 
+@api_router.get("/ticker")
+async def get_ticker():
+    return build_ticker()
+
+
+@api_router.get("/scenarios")
+async def list_scenarios():
+    return {
+        "presets": [{"id": key, **preset} for key, preset in SCENARIO_PRESETS.items()],
+        "running": {sym: _scenario_status(sym) for sym in scenarios},
+    }
+
+
+@api_router.post("/symbols/{symbol}/scenario", status_code=202)
+async def run_scenario(symbol: str, body: ScenarioBody):
+    sym = symbol.upper()
+    if sym not in INSTRUMENTS:
+        raise HTTPException(status_code=404, detail=f"Unknown symbol '{sym}'.")
+    try:
+        name, steps = _resolve_scenario(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return await start_scenario(sym, name, steps)
+
+
+@api_router.get("/symbols/{symbol}/scenario")
+async def scenario_status(symbol: str):
+    sym = symbol.upper()
+    if sym not in INSTRUMENTS:
+        raise HTTPException(status_code=404, detail=f"Unknown symbol '{sym}'.")
+    return {"symbol": sym, "running": _scenario_status(sym)}
+
+
+@api_router.delete("/symbols/{symbol}/scenario")
+async def stop_scenario(symbol: str):
+    sym = symbol.upper()
+    if sym not in INSTRUMENTS:
+        raise HTTPException(status_code=404, detail=f"Unknown symbol '{sym}'.")
+    cancelled = await cancel_scenario(sym)
+    return {"symbol": sym, "cancelled": cancelled}
+
+
 app.include_router(api_router)
 
 
@@ -452,10 +682,14 @@ async def market_data_ws(websocket: WebSocket):
         {"action": "unsubscribe", "symbol": "BTC-USD"}
         {"action": "set_volatility", "symbol": "BTC-USD", "mode": "volatile"}
         {"action": "spike", "symbol": "BTC-USD", "direction": "down", "magnitude_pct": 3}
+        {"action": "subscribe_ticker"} / {"action": "unsubscribe_ticker"}
+        {"action": "run_scenario", "symbol": "BTC-USD", "preset": "news_day"}   # or "steps": [...]
+        {"action": "cancel_scenario", "symbol": "BTC-USD"}
     """
     await websocket.accept()
     send_lock = asyncio.Lock()
     subscriptions: Dict[str, Subscription] = {}
+    ticker_task: Optional[asyncio.Task] = None
 
     async def reply(payload: dict):
         async with send_lock:
@@ -468,6 +702,7 @@ async def market_data_ws(websocket: WebSocket):
         "channels": sorted(CHANNELS),
         "candle_intervals": list(CANDLE_INTERVALS.keys()),
         "volatility_modes": list(VOLATILITY_MODES.keys()),
+        "scenario_presets": list(SCENARIO_PRESETS.keys()),
         "timestamp": _now_ms(),
     })
 
@@ -502,6 +737,7 @@ async def market_data_ws(websocket: WebSocket):
                     "type": "subscribed", "symbol": symbol, "created": created,
                     "channels": sorted(sub.channels), "candle_intervals": sorted(intervals),
                     "instrument": _symbol_info(symbol), "timestamp": _now_ms(),
+                    "scenario": _scenario_status(symbol),
                 })
 
             elif action == "unsubscribe":
@@ -543,15 +779,48 @@ async def market_data_ws(websocket: WebSocket):
                     if symbol not in subscriptions:
                         await reply(event)
 
+            elif action == "subscribe_ticker":
+                if not ticker_task:
+                    ticker_task = asyncio.create_task(ticker_stream(reply))
+                await reply({"type": "ticker_subscribed", "timestamp": _now_ms()})
+
+            elif action == "unsubscribe_ticker":
+                if ticker_task:
+                    ticker_task.cancel()
+                    ticker_task = None
+                await reply({"type": "ticker_unsubscribed", "timestamp": _now_ms()})
+
+            elif action == "run_scenario":
+                symbol = raw_symbol.upper()
+                if symbol not in INSTRUMENTS:
+                    await reply({"type": "error", "message": f"Unknown symbol '{symbol}'."})
+                    continue
+                try:
+                    body = ScenarioBody.model_validate({k: msg.get(k) for k in ("preset", "name", "steps")})
+                    name, steps = _resolve_scenario(body)
+                except (ValidationError, ValueError) as exc:
+                    await reply({"type": "error", "message": f"Invalid scenario: {exc}"})
+                    continue
+                result = await start_scenario(symbol, name, steps)
+                await reply({"type": "scenario_accepted", **result, "timestamp": _now_ms()})
+
+            elif action == "cancel_scenario":
+                symbol = raw_symbol.upper()
+                cancelled = await cancel_scenario(symbol)
+                await reply({"type": "scenario_cancel", "symbol": symbol, "cancelled": cancelled, "timestamp": _now_ms()})
+
             else:
                 await reply({
                     "type": "error",
-                    "message": "Unknown action. Use 'subscribe', 'unsubscribe', 'set_volatility' or 'spike'.",
+                    "message": "Unknown action. Use subscribe, unsubscribe, set_volatility, spike, "
+                               "subscribe_ticker, unsubscribe_ticker, run_scenario or cancel_scenario.",
                 })
 
     except WebSocketDisconnect:
         logger.info("Client disconnected.")
     finally:
+        if ticker_task:
+            ticker_task.cancel()
         for sub in subscriptions.values():
             await sub.stop()
 

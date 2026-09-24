@@ -13,6 +13,8 @@ const initialSnapshot = {
   trades: [],
   lastTrade: null,
   msgRate: 0,
+  ticker: [],
+  scenario: null,
 };
 
 // Reconnecting WebSocket client. High-frequency ticks are written into a mutable
@@ -60,6 +62,7 @@ export class MarketFeed {
     ws.onopen = () => {
       this.attempt = 0;
       this.set({ status: "live" });
+      this.send({ action: "subscribe_ticker" });
       if (this.symbol) this.sendSubscribe(this.symbol);
     };
     ws.onmessage = (e) => this.handle(JSON.parse(e.data));
@@ -92,10 +95,17 @@ export class MarketFeed {
         this.set({ lastTrade: m });
         break;
       case "subscribed":
-        if (forActive) this.set({ instrument: m.instrument, volatility: m.instrument.volatility });
+        if (forActive) this.set({ instrument: m.instrument, volatility: m.instrument.volatility, scenario: m.scenario });
+        break;
+      case "ticker":
+        this.set({ ticker: m.markets });
         break;
       case "market_event":
-        if (forActive && m.event === "volatility_changed") this.set({ volatility: m.volatility });
+        if (!forActive) break;
+        if (m.event === "volatility_changed") this.set({ volatility: m.volatility });
+        else if (m.event === "scenario_started") this.set({ scenario: { name: m.name, index: 0, total: m.total } });
+        else if (m.event === "scenario_step") this.set({ scenario: { name: m.name, index: m.index, total: m.total } });
+        else if (m.event === "scenario_finished" || m.event === "scenario_cancelled") this.set({ scenario: null });
         break;
       default:
         break;
@@ -128,7 +138,7 @@ export class MarketFeed {
     this.symbol = symbol;
     this.trades = [];
     this.tradesDirty = true;
-    this.set({ symbol, orderbook: null, mid: null, prevMid: null, instrument: null, lastTrade: null });
+    this.set({ symbol, orderbook: null, mid: null, prevMid: null, instrument: null, lastTrade: null, scenario: null });
     this.sendSubscribe(symbol);
   }
 

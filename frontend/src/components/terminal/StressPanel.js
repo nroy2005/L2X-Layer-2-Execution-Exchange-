@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { ScenarioBuilder } from "./ScenarioBuilder";
 import { API, getFeed } from "@/hooks/useMarketFeed";
 
 const MODES = ["calm", "normal", "volatile"];
@@ -46,7 +47,7 @@ export const StressPanel = ({ open, onOpenChange, snap, onSymbolAdded }) => {
       <SheetContent
         side="right"
         data-testid="stress-panel"
-        className="w-[340px] border-l border-[#27272A] bg-[#121212] p-5 text-white sm:max-w-[340px]"
+        className="terminal-scroll w-[360px] overflow-y-auto border-l border-[#27272A] bg-[#121212] p-5 text-white sm:max-w-[360px]"
       >
         <SheetHeader className="mb-6 text-left">
           <SheetTitle className="text-base font-medium tracking-tight text-white">Stress Test</SheetTitle>
@@ -116,6 +117,8 @@ export const StressPanel = ({ open, onOpenChange, snap, onSymbolAdded }) => {
               </button>
             </div>
           </div>
+
+          <ScenarioBuilder symbol={symbol} scenario={snap.scenario} />
 
           <form onSubmit={addMarket}>
             <Label>Add market</Label>

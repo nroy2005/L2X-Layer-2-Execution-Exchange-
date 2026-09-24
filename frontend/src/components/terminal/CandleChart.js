@@ -1,10 +1,18 @@
 import { useEffect, useRef } from "react";
 import axios from "axios";
-import { createChart, CandlestickSeries, ColorType, CrosshairMode } from "lightweight-charts";
+import { createChart, CandlestickSeries, HistogramSeries, ColorType, CrosshairMode } from "lightweight-charts";
 import { API, getFeed } from "@/hooks/useMarketFeed";
 import { CANDLE_INTERVALS } from "@/lib/marketFeed";
 
+const UP = "#4ADE80";
+const DOWN = "#F87171";
+
 const toBar = (c) => ({ time: c.open_time / 1000, open: c.open, high: c.high, low: c.low, close: c.close });
+const toVol = (c) => ({
+  time: c.open_time / 1000,
+  value: c.volume,
+  color: c.close >= c.open ? "rgba(74,222,128,0.45)" : "rgba(248,113,113,0.45)",
+});
 
 const CHART_OPTIONS = {
   autoSize: true,
@@ -13,6 +21,7 @@ const CHART_OPTIONS = {
     textColor: "#A1A1AA",
     fontFamily: "'JetBrains Mono', monospace",
     fontSize: 11,
+    panes: { separatorColor: "#27272A", separatorHoverColor: "#3F3F46", enableResize: true },
   },
   grid: { vertLines: { color: "#18181B" }, horzLines: { color: "#18181B" } },
   crosshair: { mode: CrosshairMode.Normal },
@@ -24,23 +33,22 @@ const CHART_OPTIONS = {
   },
 };
 
-const SERIES_OPTIONS = {
-  upColor: "#4ADE80",
-  downColor: "#F87171",
-  borderVisible: false,
-  wickUpColor: "#4ADE80",
-  wickDownColor: "#F87171",
-};
+const SERIES_OPTIONS = { upColor: UP, downColor: DOWN, borderVisible: false, wickUpColor: UP, wickDownColor: DOWN };
+const VOLUME_OPTIONS = { priceFormat: { type: "volume" }, priceScaleId: "right", lastValueVisible: false, priceLineVisible: false };
+const VOLUME_PANE_HEIGHT = 90;
 
 export const CandleChart = ({ symbol, priceDp, interval, onIntervalChange }) => {
   const elRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
+  const volumeRef = useRef(null);
 
   useEffect(() => {
     const chart = createChart(elRef.current, CHART_OPTIONS);
     chartRef.current = chart;
-    seriesRef.current = chart.addSeries(CandlestickSeries, SERIES_OPTIONS);
+    seriesRef.current = chart.addSeries(CandlestickSeries, SERIES_OPTIONS, 0);
+    volumeRef.current = chart.addSeries(HistogramSeries, VOLUME_OPTIONS, 1);
+    chart.panes()[1]?.setHeight(VOLUME_PANE_HEIGHT);
     return () => chart.remove();
   }, []);
 
@@ -52,25 +60,30 @@ export const CandleChart = ({ symbol, priceDp, interval, onIntervalChange }) => 
   useEffect(() => {
     if (!symbol) return undefined;
     const series = seriesRef.current;
+    const volume = volumeRef.current;
     series.setData([]);
+    volume.setData([]);
     let cancelled = false;
     let seeded = false;
     let lastTime = 0;
     const buffer = [];
 
-    const apply = (bar) => {
+    const apply = (c) => {
+      const bar = toBar(c);
       if (bar.time < lastTime) return;
       lastTime = bar.time;
       series.update(bar);
+      volume.update(toVol(c));
     };
 
     axios
       .get(`${API}/candles/${symbol}`, { params: { interval, limit: 300 } })
       .then((r) => {
         if (cancelled) return;
-        const bars = r.data.candles.map(toBar);
-        series.setData(bars);
-        lastTime = bars.length ? bars[bars.length - 1].time : 0;
+        const list = r.data.candles;
+        series.setData(list.map(toBar));
+        volume.setData(list.map(toVol));
+        lastTime = list.length ? list[list.length - 1].open_time / 1000 : 0;
         seeded = true;
         buffer.forEach(apply);
         chartRef.current.timeScale().scrollToRealTime();
@@ -82,9 +95,8 @@ export const CandleChart = ({ symbol, priceDp, interval, onIntervalChange }) => 
 
     const off = getFeed().on("candle", (c) => {
       if (c.symbol !== symbol || c.interval !== interval) return;
-      const bar = toBar(c);
-      if (seeded) apply(bar);
-      else buffer.push(bar);
+      if (seeded) apply(c);
+      else buffer.push(c);
     });
 
     return () => {
@@ -99,6 +111,7 @@ export const CandleChart = ({ symbol, priceDp, interval, onIntervalChange }) => 
         <div className="flex items-center gap-2">
           <span className="text-[10px] uppercase tracking-[0.15em] text-[#52525B]">Candles</span>
           <span className="font-mono text-xs text-[#E4E4E7]">{symbol ?? "—"}</span>
+          <span className="ml-2 text-[10px] uppercase tracking-[0.15em] text-[#3F3F46]">+ Volume</span>
         </div>
         <div className="flex gap-px bg-[#27272A]">
           {CANDLE_INTERVALS.map((iv) => (
