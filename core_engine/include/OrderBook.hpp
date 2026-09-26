@@ -54,8 +54,6 @@ class OrderBook {
   BidBook bids_;
   AskBook asks_;
   std::unordered_map<uint64_t, Order*> order_index_;
-  std::unordered_map<uint64_t, uint64_t> order_price_;
-  std::unordered_map<uint64_t, Side> order_side_;
   uint64_t trade_seq_{1};
   uint64_t synthetic_market_id_{1};
 };

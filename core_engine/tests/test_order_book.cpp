@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <iostream>
+#include <memory>
 
 using namespace core;
 
@@ -23,7 +24,8 @@ Order* limit(MemoryPool& pool, uint64_t id, Side side, uint64_t px, uint32_t qty
 
 int run_order_book_tests() {
   MemoryPool pool(1024);
-  OrderBook::TradeRing ring;
+  auto ring_ptr = std::make_unique<TradeRing>();
+  TradeRing& ring = *ring_ptr;
   OrderBook book(pool, ring, "BTC-USD");
 
   Order* ask1 = limit(pool, 1, Side::Sell, 10000, 10);
@@ -47,12 +49,13 @@ int run_order_book_tests() {
   book.add_limit_order(partial);
   assert(book.resting_orders() >= 2);
 
-  Order* mkt_buy = limit(pool, 999, Side::Buy, 0, 0);
-  (void)mkt_buy;
   const uint32_t mkt_fill = book.process_market_order(Side::Buy, 7);
   assert(mkt_fill > 0);
 
-  assert(book.cancel_order(3));
+  // Order 3 was fully consumed by the market sell + crossing sell @9800; 4 rests with 1 left.
+  assert(!book.cancel_order(3));
+  assert(book.cancel_order(4));
+  assert(book.resting_orders() == 1);  // ask1 remainder
   assert(!book.cancel_order(999999));
 
   Order* self = limit(pool, 5, Side::Buy, 9700, 2);

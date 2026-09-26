@@ -78,8 +78,6 @@ void OrderBook::rest_order(Order* order) {
   PriceLevel& level = level_for(order->side, order->price);
   link_back(level, order);
   order_index_[order->order_id] = order;
-  order_price_[order->order_id] = order->price;
-  order_side_[order->order_id] = order->side;
 }
 
 Order* OrderBook::best_opposite(Side incoming) const {
@@ -101,7 +99,7 @@ void OrderBook::emit_trade(const Order* maker, const Order* taker, uint32_t qty,
   TradeExecution ev{};
   ev.timestamp_ns = now_ns();
   ev.trade_id = trade_seq_++;
-  std::strncpy(ev.symbol, maker->symbol, sizeof(ev.symbol) - 1);
+  std::memcpy(ev.symbol, maker->symbol, sizeof(ev.symbol));
   ev.price = price;
   ev.quantity = qty;
   ev.aggressive_side = taker->side;
@@ -134,16 +132,12 @@ uint32_t OrderBook::match_incoming(Order* taker, uint32_t max_qty) {
     remaining -= fill_qty;
     taker->quantity -= fill_qty;
 
-    const uint64_t maker_price = order_price_.at(maker->order_id);
-    const Side maker_side = order_side_.at(maker->order_id);
-    PriceLevel& lvl = level_for(maker_side, maker_price);
+    PriceLevel& lvl = level_for(maker->side, maker->price);
     lvl.total_qty -= fill_qty;
 
     if (maker->quantity == 0) {
-      unlink_order(maker, maker_price, maker_side);
+      unlink_order(maker, maker->price, maker->side);
       order_index_.erase(maker->order_id);
-      order_price_.erase(maker->order_id);
-      order_side_.erase(maker->order_id);
       pool_.deallocate(maker);
     }
   }
@@ -154,9 +148,14 @@ void OrderBook::add_limit_order(Order* order) {
   if (order == nullptr || order->quantity == 0) {
     return;
   }
+  if (order_index_.count(order->order_id) != 0) {
+    // Duplicate id would orphan the resting order (index overwritten, cancel unreachable).
+    pool_.deallocate(order);
+    return;
+  }
   order->original_qty = order->quantity;
   if (order->symbol[0] == '\0') {
-    std::strncpy(order->symbol, symbol_, sizeof(order->symbol) - 1);
+    std::memcpy(order->symbol, symbol_, sizeof(order->symbol));
   }
 
   match_incoming(order, order->quantity);
@@ -175,7 +174,7 @@ uint32_t OrderBook::process_market_order(Side side, uint32_t quantity, uint32_t 
   Order* taker = pool_.allocate();
   taker->order_id = synthetic_market_id_++ | (1ULL << 63);
   taker->client_id = client_id;
-  std::strncpy(taker->symbol, symbol_, sizeof(taker->symbol) - 1);
+  std::memcpy(taker->symbol, symbol_, sizeof(taker->symbol));
   taker->side = side;
   taker->price = (side == Side::Buy) ? UINT64_MAX : 0;
   taker->quantity = quantity;
@@ -192,12 +191,8 @@ bool OrderBook::cancel_order(uint64_t order_id) {
     return false;
   }
   Order* order = it->second;
-  const uint64_t price = order_price_.at(order_id);
-  const Side side = order_side_.at(order_id);
-  unlink_order(order, price, side);
+  unlink_order(order, order->price, order->side);
   order_index_.erase(it);
-  order_price_.erase(order_id);
-  order_side_.erase(order_id);
   pool_.deallocate(order);
   return true;
 }

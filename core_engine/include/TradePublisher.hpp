@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Order.hpp"
 #include "RingBuffer.hpp"
 
 #include <atomic>

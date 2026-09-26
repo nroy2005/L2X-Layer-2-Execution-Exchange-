@@ -90,3 +90,5 @@ android-sdk/
 credentials.json
 *.key
 .credentials
+
+core_engine/build/

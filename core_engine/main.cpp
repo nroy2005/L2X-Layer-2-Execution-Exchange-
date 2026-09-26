@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstdint>
 #include <iostream>
+#include <memory>
 #include <random>
 #include <string>
 #include <vector>
@@ -50,7 +51,8 @@ int main(int argc, char** argv) {
   constexpr int kOrders = 100000;
 
   MemoryPool pool(kPoolCap);
-  TradePublisher::TradeRing trade_ring;
+  auto trade_ring_ptr = std::make_unique<TradeRing>();  // ~4.7MB: too big for the 1MB Windows stack
+  TradeRing& trade_ring = *trade_ring_ptr;
   OrderBook book(pool, trade_ring, "BTC-USD");
 
   std::string log_path;

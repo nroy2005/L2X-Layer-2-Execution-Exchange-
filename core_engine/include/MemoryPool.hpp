@@ -3,7 +3,7 @@
 #include "Order.hpp"
 
 #include <cstddef>
-#include <stdexcept>
+#include <new>
 #include <vector>
 
 namespace core {

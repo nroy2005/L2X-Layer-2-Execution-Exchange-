@@ -47,7 +47,7 @@ class SpscRingBuffer {
   static constexpr std::size_t kMask = Capacity - 1;
   alignas(64) std::atomic<std::size_t> head_{0};
   alignas(64) std::atomic<std::size_t> tail_{0};
-  T slots_[Capacity]{};
+  alignas(64) T slots_[Capacity]{};  // own cache line: no false sharing with tail_
 };
 
 }  // namespace core
